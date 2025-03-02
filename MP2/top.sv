@@ -78,6 +78,7 @@ module top (
         int r, g, b;
         logic [2:0] seg;
         seg = (h / 60) % 6;
+        
         case (seg)
             0: begin r = v; g = t; b = p; end
             1: begin r = q; g = v; b = p; end
