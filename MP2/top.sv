@@ -11,10 +11,18 @@ module top(
   localparam int ANGLE_MAX = CLK_FREQ / STEPS;  // ~33333 cycles per hue step
 
   // Internal signals
+  logic [7:0] pwm_red;
+  logic [7:0] pwm_green;
+  logic [7:0] pwm_blue;
   logic [15:0] angle_count;
   logic [8:0]  hue_angle;
   logic [7:0]  pwm_counter;
-  logic [7:0]  red_val, green_val, blue_val;
+
+    initial begin
+        angle_count = 0;
+        hue_angle = 0;
+        pwm_counter = 0;
+    end
 
   // Generate hue angle: Increment after ANGLE_MAX cycles, wrap at 359.
   always_ff @(posedge clk) begin
@@ -27,29 +35,60 @@ module top(
   end
 
   // HSV-to-RGB conversion (piecewise linear)
-  always_comb begin
-    if (hue_angle < 120) begin
-      red_val   = 8'd255 - (hue_angle * 8'd255) / 120;
-      green_val = (hue_angle * 8'd255) / 120;
-      blue_val  = 8'd0;
-    end else if (hue_angle < 240) begin
-      red_val   = 8'd0;
-      green_val = 8'd255 - ((hue_angle - 120) * 8'd255) / 120;
-      blue_val  = ((hue_angle - 120) * 8'd255) / 120;
-    end else begin
-      red_val   = ((hue_angle - 240) * 8'd255) / 120;
-      green_val = 8'd0;
-      blue_val  = 8'd255 - ((hue_angle - 240) * 8'd255) / 120;
-    end
-  end
+    always_comb begin
+  case (hue_angle / 60)
+    0: begin
+         // Hue: 0° to 59° – red is max, blue is min, green increases.
+         pwm_red   = 255;
+         pwm_green = (hue_angle * 255) / 60;
+         pwm_blue  = 0;
+       end
+    1: begin
+         // Hue: 60° to 119° – green is max, blue is min, red decreases.
+         pwm_red   = 255 - (((hue_angle - 60) * 255) / 60);
+         pwm_green = 255;
+         pwm_blue  = 0;
+       end
+    2: begin
+         // Hue: 120° to 179° – green is max, red is min, blue increases.
+         pwm_red   = 0;
+         pwm_green = 255;
+         pwm_blue  = (((hue_angle - 120) * 255) / 60);
+       end
+    3: begin
+         // Hue: 180° to 239° – blue is max, red is min, green decreases.
+         pwm_red   = 0;
+         pwm_green = 255 - (((hue_angle - 180) * 255) / 60);
+         pwm_blue  = 255;
+       end
+    4: begin
+         // Hue: 240° to 299° – blue is max, green is min, red increases.
+         pwm_red   = (((hue_angle - 240) * 255) / 60);
+         pwm_green = 0;
+         pwm_blue  = 255;
+       end
+    5: begin
+         // Hue: 300° to 359° – red is max, green is min, blue decreases.
+         pwm_red   = 255;
+         pwm_green = 0;
+         pwm_blue  = 255 - (((hue_angle - 300) * 255) / 60);
+       end
+    default: begin
+         // For any out-of-range values, default to black.
+         pwm_red   = 0;
+         pwm_green = 0;
+         pwm_blue  = 0;
+       end
+  endcase
+end
 
   // 8-bit PWM counter
   always_ff @(posedge clk)
     pwm_counter <= pwm_counter + 1;
 
   // Generate active-low PWM outputs based on PWM comparison.
-  assign RGB_R = (pwm_counter < red_val)   ? 1'b0 : 1'b1;
-  assign RGB_G = (pwm_counter < green_val) ? 1'b0 : 1'b1;
-  assign RGB_B = (pwm_counter < blue_val)  ? 1'b0 : 1'b1;
+  assign RGB_R = ~(pwm_counter < pwm_red);
+  assign RGB_G = ~(pwm_counter < pwm_green);
+  assign RGB_B = ~(pwm_counter < pwm_blue);
 
 endmodule
