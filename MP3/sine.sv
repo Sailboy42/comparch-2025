@@ -1,4 +1,4 @@
-`include "memory_quarter.sv"  // Use the modified quarter-cycle memory module
+`include "memory_quarter.sv"  // Use quarter-cycle memory module
 
 module top(
     input  logic clk, 
@@ -60,7 +60,6 @@ module top(
     );
 
     // Combine sign and magnitude to form a 10-bit sample output.
-    // (Assuming a simple sign/magnitude representation.)
     logic [9:0] data;
     assign data = {sign, quarter_data};
 
