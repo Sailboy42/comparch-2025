@@ -1,4 +1,4 @@
-`timescale 1ns/1ps
+`timescale 10ns/10ns
 `include "sine.sv"
 
 module tb_top;
@@ -42,8 +42,8 @@ module tb_top;
     initial begin
         $dumpfile("tb_top.vcd");  // VCD file for viewing waveforms in gtkwave
         $dumpvars(0, tb_top);
-        // Run simulation for 6000ns, which covers more than one full cycle (5120ns for one cycle)
-        #6000;
+        // Run simulation for 12000ns, which covers more than two full cycle (5120ns for one cycle)
+        #12000;
         $finish;
     end
 endmodule

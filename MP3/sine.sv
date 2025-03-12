@@ -1,7 +1,7 @@
-`include "memory_quarter.sv"  // Use quarter-cycle memory module
+`include "memory_quarter.sv"
 
 module top(
-    input  logic clk, 
+    input  logic clk,
     output logic _9b,    // D0
     output logic _6a,    // D1
     output logic _4a,    // D2
@@ -14,42 +14,26 @@ module top(
     output logic _48b    // D9
 );
 
-    // Helper function to extract the lower 7 bits without using a constant select.
-    function automatic logic [6:0] lower7(input logic [8:0] x);
-        lower7 = x - ((x >> 7) << 7);
-    endfunction
-
     // 9-bit counter for 512 sample positions (0 to 511)
     logic [8:0] counter = 0;
     always_ff @(posedge clk) begin
         counter <= counter + 1;
     end
 
-    // Determine which quarter of the cycle and compute quarter address and sign
-    logic [6:0] quarter_address;
-    logic       sign;
-    
-    always_comb begin
-        if (counter < 9'd128) begin
-            // Quarter 1: 0 to 127
-            quarter_address = lower7(counter);  // Extract lower 7 bits
-            sign = 1'b0;
-        end else if (counter < 9'd256) begin
-            // Quarter 2: 128 to 255
-            quarter_address = 7'd127 - (counter - 9'd128);
-            sign = 1'b0;
-        end else if (counter < 9'd384) begin
-            // Quarter 3: 256 to 383
-            quarter_address = counter - 9'd256; // yields 0 to 127
-            sign = 1'b1;
-        end else begin
-            // Quarter 4: 384 to 511
-            quarter_address = 7'd127 - (counter - 9'd384);
-            sign = 1'b1;
-        end
-    end
+    // Extract quarter selection bits and the lower 7 bits for addressing
+    logic [1:0] quarter_sel;
+    logic [6:0] counter_bits;
+    assign quarter_sel = counter[8:7];
+    assign counter_bits = counter[6:0];
 
-    // Quarter-cycle memory outputs a 9-bit magnitude sample
+    // Determine the quarter-wave memory address and compute the output data
+    // We center the waveform around 512 (mid-scale for a 10-bit DAC) so that:
+    // - In quarters 1 and 2 (positive half), data = 512 + quarter_data.
+    // - In quarters 3 and 4 (negative half), data = 512 - quarter_data.
+    logic [6:0] quarter_address;
+    logic [9:0] data; // 10-bit output
+
+    // Quarter-cycle memory outputs a 9-bit magnitude sample (0 to 511)
     logic [8:0] quarter_data;
     memory_quarter #(
         .INIT_FILE("sine_quarter.txt")
@@ -59,11 +43,37 @@ module top(
         .read_data(quarter_data)
     );
 
-    // Combine sign and magnitude to form a 10-bit sample output.
-    logic [9:0] data;
-    assign data = {sign, quarter_data};
+    // Use a case statement on quarter_sel to choose address ordering and compute data
+    always_comb begin
+        case (quarter_sel)
+            2'b00: begin
+                // Quarter 1: rising, direct order
+                quarter_address = counter_bits;        // 0 to 127
+                data = 10'd512 + quarter_data;           // Offset upward
+            end
+            2'b01: begin
+                // Quarter 2: falling, reversed order
+                quarter_address = 7'd127 - counter_bits; // Reverse order 127 down to 0
+                data = 10'd512 + quarter_data;           // Still add for positive half
+            end
+            2'b10: begin
+                // Quarter 3: falling, direct order
+                quarter_address = counter_bits;          // 0 to 127
+                data = 10'd512 - quarter_data;           // Subtract for negative half
+            end
+            2'b11: begin
+                // Quarter 4: rising, reversed order
+                quarter_address = 7'd127 - counter_bits; // Reverse order 127 down to 0
+                data = 10'd512 - quarter_data;           // Subtract for negative half
+            end
+            default: begin
+                quarter_address = 7'd0;
+                data = 10'd512;
+            end
+        endcase
+    end
 
-    // Map the 10-bit data to the DAC outputs (order may reflect wiring requirements)
+    // Map the 10-bit data to DAC outputs in the specified order
     assign {_48b, _45a, _49a, _3b, _5a, _0a, _2a, _4a, _6a, _9b} = data;
 
 endmodule
